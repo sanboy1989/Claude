@@ -1,0 +1,162 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ─────────────────────────────────────────────
+// USERS & ROLES
+// ─────────────────────────────────────────────
+
+enum Role {
+  PLATFORM_ADMIN
+  MERCHANT
+  CUSTOMER
+}
+
+model User {
+  id            String    @id @default(cuid())
+  email         String    @unique
+  passwordHash  String?
+  name          String?
+  avatarUrl     String?
+  role          Role      @default(CUSTOMER)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  merchant      Merchant?
+  bookings      Booking[]
+}
+
+// ─────────────────────────────────────────────
+// MERCHANT / TENANT
+// ─────────────────────────────────────────────
+
+enum MerchantStatus {
+  PENDING
+  ACTIVE
+  SUSPENDED
+}
+
+model Merchant {
+  id          String         @id @default(cuid())
+  userId      String         @unique
+  slug        String         @unique
+  name        String
+  description String?
+  logoUrl     String?
+  phone       String?
+  address     String?
+  timezone    String         @default("Asia/Hong_Kong")
+  status      MerchantStatus @default(PENDING)
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+
+  user              User               @relation(fields: [userId], references: [id])
+  services          Service[]
+  availabilityRules AvailabilityRule[]
+  blockedPeriods    BlockedPeriod[]
+  bookings          Booking[]
+}
+
+// ─────────────────────────────────────────────
+// SERVICES
+// ─────────────────────────────────────────────
+
+model Service {
+  id                 String   @id @default(cuid())
+  merchantId         String
+  name               String
+  description        String?
+  durationMins       Int
+  price              Decimal  @db.Decimal(10, 2)
+  currency           String   @default("HKD")
+  isActive           Boolean  @default(true)
+  maxBookingsPerSlot Int      @default(1)
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  merchant Merchant  @relation(fields: [merchantId], references: [id])
+  bookings Booking[]
+
+  @@index([merchantId])
+}
+
+// ─────────────────────────────────────────────
+// AVAILABILITY
+// ─────────────────────────────────────────────
+
+enum DayOfWeek {
+  MONDAY
+  TUESDAY
+  WEDNESDAY
+  THURSDAY
+  FRIDAY
+  SATURDAY
+  SUNDAY
+}
+
+model AvailabilityRule {
+  id         String    @id @default(cuid())
+  merchantId String
+  dayOfWeek  DayOfWeek
+  startTime  String
+  endTime    String
+  isActive   Boolean   @default(true)
+
+  merchant Merchant @relation(fields: [merchantId], references: [id])
+
+  @@unique([merchantId, dayOfWeek])
+  @@index([merchantId])
+}
+
+model BlockedPeriod {
+  id         String   @id @default(cuid())
+  merchantId String
+  startAt    DateTime
+  endAt      DateTime
+  reason     String?
+
+  merchant Merchant @relation(fields: [merchantId], references: [id])
+
+  @@index([merchantId, startAt, endAt])
+}
+
+// ─────────────────────────────────────────────
+// BOOKINGS
+// ─────────────────────────────────────────────
+
+enum BookingStatus {
+  PENDING
+  CONFIRMED
+  CANCELLED
+  COMPLETED
+  NO_SHOW
+}
+
+model Booking {
+  id           String        @id @default(cuid())
+  merchantId   String
+  serviceId    String
+  customerId   String
+  startAt      DateTime
+  endAt        DateTime
+  status       BookingStatus @default(PENDING)
+  notes        String?
+  totalPrice   Decimal       @db.Decimal(10, 2)
+  currency     String        @default("HKD")
+  cancelReason String?
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+
+  merchant Merchant @relation(fields: [merchantId], references: [id])
+  service  Service  @relation(fields: [serviceId], references: [id])
+  customer User     @relation(fields: [customerId], references: [id])
+
+  @@index([merchantId, startAt])
+  @@index([customerId])
+  @@index([startAt, endAt])
+}
